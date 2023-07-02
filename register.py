@@ -1,29 +1,40 @@
 
 import os
 
-
-class   port:
-    def __init__(self, name, width = 1, type = "output"):
-
-        if type == "input":
-            self.name = "{}_i".format(name)
-        elif type == "output":
-            self.name = "{}_o".format(name)
-
+class   signal:
+    def __init__(self, name = "", width = 1, type = ""):
+        self.name = name
         self.width = width
         self.type = type
 
-    def gen_port_block(self):
+    def gen_block(self):
+        width_str = ""
+
+        if self.width > 1:
+            width_str = "[{} : {}]".format(self.width - 1, 0)
+
+        return  "{:<4} {:<8}\t\t\t\t\t\t{},\n".format(self.type, width_str, self.name)
+
+# 端口类，端口也属于一种信号
+# class   port(signal):
+#     # def __init__(self, name, width = 1, type = "output"):
+
+#     #     if type == "input":
+#     #         self.name = "{}_i".format(name)
+#     #     elif type == "output":
+#     #         self.name = "{}_o".format(name)
+
+#     #     self.width = width
+#     #     self.type = type
+
+#     def gen_block(self):
         
-        width_str = "[{} : {}]".format(self.width - 1, 0)
+#         width_str = ""
 
-        return  "\t{} {:<8}\t\t\t\t\t\t{},\n".format(self.type, width_str, self.name)
+#         if self.width > 1:
+#             width_str = "[{} : {}]".format(self.width - 1, 0)
 
-class   signal:
-    def __init__(self, name = "q", width = 1, type = "reg"):
-        self.name = name
-        self.width = width
-        self.type = type 
+#         return  "\t{:<6} {:<8}\t\t\t\t{},\n".format(self.type, width_str, self.name)
 
 
 # 触发器
@@ -43,42 +54,30 @@ class dff:
         self.rstval = rstval
 
         self.signal = {}
+
+        # Q端
         self.signal["q"] = signal(name="{}_q".format(name), width=width, type="reg")
-        self.signal["d"] = signal(name="{}_d".format(name), width=width, type="wire")
 
         # 带set和clr
         if type in {"sclr"}:
             self.signal["set"] = signal(name="{}_set".format(name), width=1, type="wire")
             self.signal["clr"] = signal(name="{}_clr".format(name), width=1, type="wire")
+
         # 只有使能端
-        
         if type in {"lr", "l", "sclr"}:
             self.signal["rld"] = signal(name="{}_rld".format(name), width=1, type="wire")
+
+        # D端
+        self.signal["d"] = signal(name="{}_d".format(name), width=width, type="wire")
 
     # 生成变量定义区
     def gen_var_block(self):
         var_block = []
 
-        var_block.append("\n// {}\n".format(self.name))
+        var_block.append("\n// {} signal definition\n".format(self.name))
 
         for key in self.signal:
-            width_str = ""
-            if self.signal[key].width > 1:
-                width_str = "[{} : {}]".format(self.width - 1, 0)
-            var_block.append("{:<8}{:<8}\t\t\t{};\n".format(self.signal[key].type, width_str, self.signal[key].name))
- 
-        # var_block.append("reg\t\t{:<6}\t\t\t\t{};\n".format(width_str, self.signal["q"].name))
-
-        # if self.type in {"sclr"}:
-        #     var_block.append("wire\t\t\t\t\t\t{};\n".format(self.signal["set"].name))
-        #     var_block.append("wire\t\t\t\t\t\t{};\n".format(self.clr.name))
-
-        # if self.type in {"sclr", "l", "lr"}:
-        #     var_block.append("wire\t\t\t\t\t\t{};\n".format(self.rld.name))
-
-        # var_block.append("wire\t{:<6}\t\t\t\t{};\n".format(width_str, self.d.name))
-
-        # print(var_block)
+            var_block.append(self.signal[key].gen_block())
 
         return var_block
 
@@ -86,8 +85,8 @@ class dff:
     def gen_fun_block(self, set : str = "", clr = "", rld = "", d = ""):
         fun_block = []
 
-
-        fun_block.append("\n// {}\n".format(self.name))
+        # 注释
+        fun_block.append("\n// {} function logic\n".format(self.name))
 
         # print(self.type)
         if self.type in {"sclr"}:
@@ -247,31 +246,31 @@ class   field:
 
         # 输入输出端口
         if self.access in {"rw", "w1", "wo", "w1p", "w0p", "hsrw", "rwhs"}:
-            self.port["val"] = port(self.name, width = self.width, type = "output")
+            self.port["val"] = signal("{}_o".format(self.name), width = self.width, type = "output")
             # self.out_port = port(self.name, width = self.width, type = "output")
         elif self.access in {"ro", "rc", "rs", "wc", "wsrc", "wcrs", "w1s", "w1c", "w1t", "w0c", "w0s", "w0t", "w1src", "w1crs"}:
-            self.port["val"] = port(self.name, width = self.width, type = "input")
+            self.port["val"] = signal("{}_i".format(self.name), width = self.width, type = "input")
             # self.in_port = port(self.name, width = self.width, type = "input")
 
         # 寄存器清除信号
         if self.access in {"rc", "wc", "w1c", "w0c", "w1src", "w1crs", "woc", "wsrc", "wcrs"}:
-            self.port["clr"] = port("{}_clr".format(self.name), width = 1, type = "output")
+            self.port["clr"] = signal("{}_clr_o".format(self.name), width = 1, type = "output")
             # self.clr_port = port("{}_clr".format(self.name), width = 1, type = "output")
 
         # 寄存器翻转端口
         if self.access in {"w1t", "w0t"}:
-            self.port["tog"] = port("{}_tog".format(self.name), width = 1, type = "output")
+            self.port["tog"] = signal("{}_tog_o".format(self.name), width = 1, type = "output")
             # self.tog_port = port("{}_tog".format(self.name), width = 1, type = "output")
         
         # 字段置位端口
         if self.access in {"rs", "ws", "wsrc", "wcrs", "w1s", "w0s", "w1src", "w1crs"}:
-            self.port["set"] = port("{}_set".format(self.name), width = 1, type = "output")
+            self.port["set"] = signal("{}_set_o".format(self.name), width = 1, type = "output")
             # self.set_port = port("{}_set".format(self.name), width = 1, type = "output")
 
         # 硬件控制端口
         if self.access in {"rwhs", "hsrw"}:
-            self.port["hw_rld"] = port("{}_hw_rld".format(self.name), width = 1, type = "input")
-            self.port["hw_d"] = port("{}_hw_d".format(self.name), width = self.width, type = "input")
+            self.port["hw_rld"] = signal("{}_hw_rld_i".format(self.name), width = 1, type = "input")
+            self.port["hw_d"] = signal("{}_hw_d_i".format(self.name), width = self.width, type = "input")
             # self.rld_port = port("{}_hw_rld".format(self.name), width = 1, type = "input")
             # self.d_port = port("{}_hw_d".format(self.name), width = self.width, type = "input")
 
@@ -290,29 +289,12 @@ class   field:
                 if key in {"set", "clr", "tog"}:
                     self.flop[key] = dff("{}_{}".format(self.name, key), 1, "sclr")
                 elif key in {"val"}:
-                    self.flop[key] = dff("{}".format(self.name), self.width, "lr", rstval=self.rstval)
-
-        
-
-        # # 需要生成clr相关信号
-        # if hasattr(self, "clr_port"):
-        #     self.flop["clr"] = dff("{}_clr".format(self.name), 1, "sclr")
-
-        # # 生成set相关信号
-        # if hasattr(self, "set_port"):
-        #     self.flop["set"] = dff("{}_set".format(self.name), 1, "sclr")
-
-        # # 生成toggle相关信号
-        # if hasattr(self, "tog_port"):
-        #     self.flop["tog"] = dff("{}_tog".format(self.name), 1, "sclr")
-
-        # # 产生脉冲
-        # if self.access in {"w1p", "w0p"}:
-        #     self.flop[self.name] = dff("{}".format(self.name), self.width, "sclr")
-        
-        # # 存储字段的值
-        # if self.access in {"rw", "w1", "wo", "hsrw", "rwhs"}:
-        #     self.flop[self.name] = dff("{}".format(self.name), self.width, "lr", rstval=self.rstval)
+                    # w1p和w0p类型的寄存器还需要特殊处理一下，
+                    # 因为在创建端口时创建了val类型
+                    if self.access in {"w1p", "w0p"}:
+                        self.flop[key] = dff("{}".format(self.name), 1, "sclr", rstval=self.rstval)
+                    else:
+                        self.flop[key] = dff("{}".format(self.name), self.width, "lr", rstval=self.rstval)
 
         # 对于只能操作一次的突破口类型，需要有一个锁定标志
         if self.access in {"w1"}:
@@ -437,6 +419,18 @@ class   field:
                 d_str = self.flop["val"].signal["set"].name
                 fun_block.append(self.flop["val"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
+            case "w1t":
+                set_str = "{} & wdata_i[{}]".format(self.attribution.signal["wen"].name, self.lsb)
+                clr_str = self.flop["tog"].signal["q"].name
+                d_str = self.flop["tog"].signal["set"].name
+                fun_block.append(self.flop["tog"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
+
+            case "w0t":
+                set_str = "{} & (~wdata_i[{}])".format(self.attribution.signal["wen"].name, self.lsb)
+                clr_str = self.flop["tog"].signal["q"].name
+                d_str = self.flop["tog"].signal["set"].name
+                fun_block.append(self.flop["tog"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
+
             case "w1src":
                 set_str = "{} & wdata_i[{}]".format(self.attribution.signal["wen"].name, self.lsb)
                 clr_str = self.flop["set"].signal["q"].name
@@ -502,7 +496,8 @@ class   field:
 
         # 处理每一个端口
         for key in self.port:
-            port_block.append(self.port[key].gen_port_block())
+            # 端口在定义时，多缩进一格
+            port_block.append("\t{}".format(self.port[key].gen_block()))
 
         # print(port_block)
 
@@ -534,10 +529,6 @@ class   register:
         self.signal["ren"] = signal("{}_reg_ren".format(self.name), 1, "wire")
         self.signal["full"] = signal("{}_reg_full".format(self.name), self.width, "wire")
 
-        # self.wen = signal("{}_reg_wen".format(self.name), 1, "wire")
-        # self.ren = signal("{}_reg_ren".format(self.name), 1, "wire")
-        # self.full = signal("{}_reg_full".format(self.name), self.width, "wire")
-
     # 新增一个字段
     def add_field(self, info):
         self.field.append(field(self, info))
@@ -549,19 +540,11 @@ class   register:
     def gen_var_block(self):
         var_block = []
 
-        width_str = "[{} : {}]".format(self.width - 1, 0)
-
         var_block.append("\n// {} register\n".format(self.name))
 
         # 处理每一个信号
         for key in self.signal:
-            sig = self.signal[key]
-            width_str = ""
-            if sig.width > 1:
-                width_str = "[{} : {}]".format(sig.width - 1, 0)
-
-            var_block.append("{}\t{:<8}\t\t\t{};\n".format(sig.type, width_str, sig.name))
-
+            var_block.append(self.signal[key].gen_block())
         
         return var_block
 
@@ -576,20 +559,37 @@ class   register:
         reg_bits = [i for i in range(0, self.width)]
 
         for var in self.field:
-            print(var.name)
-            if var.width <= 1:
-                bit_idx_str = ""
-            else:
-                bit_idx_str = "[{} : {}]".format(var.msb, var.lsb)
+            for line in var.gen_fun_block():
+                fun_block.append(line)
+        # # 功能区
+        # for line in var.gen_fun_block():
+        #     reg_file.write("".join(line))
 
-            fun_block.append("assign\t\t{}{} = {};\n".format(self.signal["full"].name, bit_idx_str, var.name))
+        # for var in self.field:
+        #     # print(var.name)
+        #     if var.width <= 1:
+        #         bit_idx_str = ""
+        #     else:
+        #         bit_idx_str = "[{} : {}]".format(var.msb, var.lsb)
 
-            # rm_bits = [i for i in range(var.lsb, var.msb)]
-            del reg_bits[var.lsb : var.width]
+        #     fun_block.append("assign\t\t{}{} = {};\n".format(self.signal["full"].name, bit_idx_str, var.name))
 
-            print(reg_bits, var.lsb, var.width)
+        #     # rm_bits = [i for i in range(var.lsb, var.msb)]
+        #     del reg_bits[var.lsb : var.width]
+
+        #     # print(reg_bits, var.lsb, var.width)
 
         # full
+        for var in self.field:
+            
+            # 这些类型的寄存器都是输入
+            if var.access in {"ro", "rc", "rs", "wc", "ws", "wsrc", "wcrs", "w1s", "w0s", "w1c", "w0c", "w1t", "w0t", "w1src", "w1crs"}:
+                print(var.name, var.access, var.width, var.port["val"].name)
+                if var.width > 1:
+                    fun_block.append("assign\t\t{}[{} : {}] = {};\n".format(self.signal["full"].name, var.msb, var.lsb, var.port["val"].name))
+                else:
+                    fun_block.append("assign\t\t{}[{}] = {};\n".format(self.signal["full"].name, var.lsb, var.port["val"].name))
+            
 
         return fun_block
 
@@ -624,22 +624,22 @@ reg_list.append(register("intr_mask", "0x0", 32))
 
 
 reg_field["name"] = "xfer_cplt_intr_msk"
-reg_field["msb"] = 0
+reg_field["msb"] = 12
 reg_field["lsb"] = 0
-reg_field["access"] = "w1"
+reg_field["access"] = "w1c"
 reg_field["rstval"] = "1'b0"
 reg_field["desc"] = ""
 
 reg_list[-1].add_field(reg_field)
 
-# reg_field["name"] = "xfer_err_intr_msk"
-# reg_field["msb"] = 3
-# reg_field["lsb"] = 1
-# reg_field["access"] = "rw"
-# reg_field["rstval"] = "3'd0"
-# reg_field["desc"] = ""
+reg_field["name"] = "xfer_err_intr_msk"
+reg_field["msb"] = 3
+reg_field["lsb"] = 1
+reg_field["access"] = "wc"
+reg_field["rstval"] = "3'd0"
+reg_field["desc"] = ""
 
-# reg_list[-1].add_field(reg_field)
+reg_list[-1].add_field(reg_field)
 
 # # 添加一个新的中断寄存器
 # reg_list.append(register("intr", "0x4", 32))
@@ -675,7 +675,8 @@ reg_list[-1].add_field(reg_field)
 reg_file = open("reg_file.v", "w")
 
 
-reg_list[-1].gen_fun_block()
+# reg_list[-1].gen_fun_block()
+
 # 遍历寄存器list中每一个寄存器
 for reg in reg_list:
     for var in reg.field:
@@ -700,10 +701,13 @@ for reg in reg_list:
 
 # 处理每一个寄存器的每个字段的功能区
 for reg in reg_list:
-    for var in reg.field:
-        # 功能区
-        for line in var.gen_fun_block():
-            reg_file.write("".join(line))
+    for line in reg.gen_fun_block():
+        reg_file.write("".join(line))
+
+    # for var in reg.field:
+    #     # 功能区
+    #     for line in var.gen_fun_block():
+    #         reg_file.write("".join(line))
 
 
 for reg in reg_list:
