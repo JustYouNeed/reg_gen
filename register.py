@@ -1,5 +1,13 @@
 
 import os
+import logging
+
+
+class log:
+    def __init__(self) -> None:
+        pass
+    def err(self, msg : str):
+        print("\033[1;35;0m{} \033[0m]".format(msg))
 
 class   signal:
     def __init__(self, name = "", width = 1, type = ""):
@@ -16,37 +24,62 @@ class   signal:
         return  "{:<4} {:<8}\t\t\t\t{},\n".format(self.type, width_str, self.name)
 
 # 端口类，端口也属于一种信号
-# class   port(signal):
-#     # def __init__(self, name, width = 1, type = "output"):
+class   port:
+    def __init__(self, name, width = 1, type = "output"):
 
-#     #     if type == "input":
-#     #         self.name = "{}_i".format(name)
-#     #     elif type == "output":
-#     #         self.name = "{}_o".format(name)
+        if type == "input":
+            self.name = "{}_i".format(name)
+        elif type == "output":
+            self.name = "{}_o".format(name)
+        else:
+            raise Exception("unsupported port type : {}".format(type))
 
-#     #     self.width = width
-#     #     self.type = type
+        self.width = width
+        self.type = type
 
-#     def gen_block(self):
+    def gen_block(self):
         
-#         width_str = ""
+        width_str = ""
 
-#         if self.width > 1:
-#             width_str = "[{} : {}]".format(self.width - 1, 0)
+        if self.width > 1:
+            width_str = "[{} : {}]".format(self.width - 1, 0)
 
-#         return  "\t{:<6} {:<8}\t\t\t\t{},\n".format(self.type, width_str, self.name)
+        return  "\t{:<6} {:<8}\t\t\t\t{}".format(self.type, width_str, self.name)
 
 
 # 触发器
 """
 触发器类型：
+
 1、lr 具有LOAD RESET 
-2、l 具有LOAD 没有reset
-3、sclr 具有SET CLR LOAD RESET
+2、sclr 具有SET CLR LOAD RESET
+always@(posedge clk_i or negedge rstn_i) begin
+    if(rstn_i == 1'b0) begin
+        q <= 1'b0;
+    end else if(rld) begin
+        q <= d;
+    end
+end
+
+3、l 具有LOAD 没有reset
+always@(posedge clk_i) begin
+    if(rld) begin
+        q <= d;
+    end
+end
+
 4、r 只有复位
+always@(posedge clk_i or negedge rstn_i) begin
+    if(rstn_i == 1'b0) begin
+        q <= 1'b0;
+    end else begin
+        q <= d;
+    end
+end
+
 """
 class dff:
-    def __init__(self, name, width, type, rstval = "1'b0"):
+    def __init__(self, name, width, type, rstval = "b0"):
 
         self.name = name    
         self.type = type    
@@ -54,6 +87,9 @@ class dff:
         self.rstval = rstval
 
         self.signal = {}
+        
+        if type not in {"l", "lr", "sclr", "r"}:
+            raise Exception("unsupported dff type : {}".format(type))
 
         # Q端
         self.signal["q"] = signal(name="{}_q".format(name), width=width, type="reg")
@@ -86,7 +122,7 @@ class dff:
         fun_block = []
 
         # 注释
-        fun_block.append("\n// {} function logic\n".format(self.name))
+        fun_block.append("\n// {}\n".format(self.name))
 
         # print(self.type)
         if self.type in {"sclr"}:
@@ -98,125 +134,54 @@ class dff:
             fun_block.append("assign\t\t{} = {};\n".format(self.signal["rld"].name, rld))
         # D端
         fun_block.append("assign\t\t{} = {};\n".format(self.signal["d"].name, d))
-
-        # 没有复位，只有load
-        if self.type in {"l"}:
-            fun_block.append("always@(posedge clk_i) begin\n")
-            fun_block.append("\tif({}) begin\n".format(self.signal["rld"].name))
-        # 有复位以及load
-        elif self.type in {"lr", "sclr"}:
+        
+        # 这两种类型的flop具有复位的rld
+        if self.type in {"lr", "sclr"}:
             fun_block.append("always@(posedge clk_i or negedge rstn_i) begin\n")
             fun_block.append("\tif(rstn_i == 1'b0) begin\n")
             fun_block.append("\t\t{} <= {}'{};\n".format(self.signal["q"].name, self.width, self.rstval))
             fun_block.append("\tend else if({}) begin\n".format(self.signal["rld"].name))
-        # 没有复位，也没有load
+            
+        # 只有load，没有复位
+        elif self.type in {"l"}:
+            fun_block.append("always@(posedge clk_i) begin\n")
+            fun_block.append("\tif({}) begin\n".format(self.signal["rld"].name))
+            
+        # 只有复位，没有load
+        elif self.type in {"r"}:
+            fun_block.append("always@(posedge clk_i or negedge rstn_i) begin\n")
+            fun_block.append("\tif(rstn_i == 1'b0) begin\n")
+            fun_block.append("\t\t{} <= {}'{};\n".format(self.signal["q"].name, self.width, self.rstval))
+            fun_block.append("\tend else begin\n")
+        # 没有复位，没有load
         else:
             fun_block.append("always@(posedge clk_i) begin\n")
+            fun_block.append("\tif(1) begin\n")
+
+        # # 没有复位，只有load
+        # if self.type in {"l"}:
+        #     fun_block.append("always@(posedge clk_i) begin\n")
+        #     fun_block.append("\tif({}) begin\n".format(self.signal["rld"].name))
+        # # 有复位以及load
+        # elif self.type in {"lr", "sclr"}:
+        #     fun_block.append("always@(posedge clk_i or negedge rstn_i) begin\n")
+        #     fun_block.append("\tif(rstn_i == 1'b0) begin\n")
+        #     fun_block.append("\t\t{} <= {}'{};\n".format(self.signal["q"].name, self.width, self.rstval))
+        #     fun_block.append("\tend else if({}) begin\n".format(self.signal["rld"].name))
+        # # 没有复位，也没有load
+        # else:
+        #     fun_block.append("always@(posedge clk_i) begin\n")
         
         fun_block.append("\t\t{} <= {};\n".format(self.signal["q"].name, self.signal["d"].name))
         fun_block.append("\tend\n")
         fun_block.append("end\n")
 
         return fun_block    
-    
 
-"""
-1、RW 可读可写
-output      reg_o,
-
-assign      reg_rld = reg_wen;
-assign      reg_d = wdata_i[msb, lsb]
-always@(posedge clk_i or negedge rstn_i) begin
-    if(rstn_i == 1'b0) begin
-        reg_q <= rstvalue;
-    end else if(reg_rld) begin
-        reg_q <= reg_d;
-    end
-end
-assign      reg_o = reg_q;
-
-2、RO 只读
-input       reg_i,
-
-
-3、RC 读后清零，不可写
-input       reg_i,
-output      reg_clr_o,
-
-assign      reg_clr_set = reg_ren;
-assign      reg_clr_clr = reg_clr_q;
-assign      reg_clr_rld = reg_clr_set | reg_clr_clr;
-assign      reg_clr_d = reg_clr_set;
-always@(posedge clk_i or negedge rstn_i) begin
-    if(rstn_i == 1'b0) begin
-        reg_clr_q <= rstvalue;
-    end else if(reg_clr_rld) begin
-        reg_clr_q <= reg_clr_d;
-    end
-end
-assign      reg_clr_o = reg_clr_q;
-
-4、RS 读后置位，不可写
-input       reg_i,
-output      reg_set_o,
-
-assign      reg_set_set = reg_ren;
-assign      reg_set_clr = reg_set_q;
-assign      reg_set_rld = reg_set_set | reg_set_clr;
-assign      reg_set_d = reg_set_set;
-always@(posedge clk_i or negedge rstn_i) begin
-    if(rstn_i == 1'b0) begin
-        reg_set_q <= rstvalue;
-    end else if(reg_set_rld) begin
-        reg_set_q <= reg_set_d;
-    end
-end
-assign      reg_set_o = reg_set_q;
-
-5、W1C 写1清零，可读
-input       reg_i,
-output      reg_clr_o,
-
-assign      reg_clr_set = reg_wen & wdata_i[msb, lsb];
-assign      reg_clr_clr = reg_clr_q;
-assign      reg_clr_rld = reg_clr_set | reg_clr_clr;
-assign      reg_clr_d = reg_clr_set;
-always@(posedge clk_i or negedge rstn_i) begin
-    if(rstn_i == 1'b0) begin
-        reg_clr_q <= rstvalue;
-    end else if(reg_clr_rld) begin
-        reg_clr_q <= reg_clr_d;
-    end
-end
-assign      reg_clr_o = reg_clr_q;
-
-6、W0C 写0清零，可读
-input       reg_i,
-output      reg_clr_o,
-
-assign      reg_clr_set = reg_wen & (~wdata_i[msb, lsb]);
-assign      reg_clr_clr = reg_clr_q;
-assign      reg_clr_rld = reg_clr_set | reg_clr_clr;
-assign      reg_clr_d = reg_clr_set;
-always@(posedge clk_i or negedge rstn_i) begin
-    if(rstn_i == 1'b0) begin
-        reg_clr_q <= rstvalue;
-    end else if(reg_clr_rld) begin
-        reg_clr_q <= reg_clr_d;
-    end
-end
-assign      reg_clr_o = reg_clr_q;
-
-
-7、WC   写清零，可读
-input       reg_i,
-output      reg_clr_o,
-
-"""
-
-
-# 寄存器域
+# 寄存器字段定义
 class   field:
+    # 支持的寄存器属性
+    support_access = {"rw", "ro", "w1c", "w0c", "w1s", "w0s", "w1p", "w0p", "w1t", "w0t", "wp", "rp", "wc", "ws", "rc", "rs", "wsrc", "wcrs", "hsrw", "rwhs", "w1"}
     def __init__(self, attribution, info):
 
         # 该字段归属哪个寄存器
@@ -228,14 +193,25 @@ class   field:
         self.access = info["access"].lower()
         self.rstval = info["rstval"]
         self.desc = info["desc"]
-
+        self.reg_out = "yes"
         self.width = info["msb"] - info["lsb"] + 1
+        
+        # 检查字段属性
+        self.__check_para()
 
        # 创建字段需要的端口
         self.__gen_port()
 
         # 创建字段需要用到的flop
         self.__gen_flop()
+    
+    # 属性检查 
+    def __check_para(self):
+        if self.access not in field.support_access:
+            raise Exception("unsupported dff type : {}".format(self.access))
+
+        if str(self.rstval)[0] not in {'b', 'h', 'd'}:
+            raise Exception("reset value error : {}".format(self.rstval))
 
     # 生成字段对应的端口
     def __gen_port(self):
@@ -243,31 +219,31 @@ class   field:
         self.port = {}
 
         # 输入输出端口
-        if self.access in {"rw", "w1", "wo", "w1p", "w0p", "hsrw", "rwhs", "wp"}:
-            self.port["val"] = signal("{}_o".format(self.name), width = self.width, type = "output")
-        elif self.access in {"ro", "rc", "rs", "wc", "wsrc", "wcrs", "w1s", "w1c", "w1t", "w0c", "w0s", "w0t", "w1src", "w1crs", "rp"}:
-            self.port["val"] = signal("{}_i".format(self.name), width = self.width, type = "input")
+        if self.access in {"rw", "w1", "w1p", "w0p", "hsrw", "rwhs", "wp"}:
+            self.port["val"] = port("{}".format(self.name), width = self.width, type = "output")
+        elif self.access in {"ro", "rc", "rs", "wc", "ws", "wsrc", "wcrs", "w1s", "w1c", "w1t", "w0c", "w0s", "w0t", "rp"}:
+            self.port["val"] = port("{}".format(self.name), width = self.width, type = "input")
 
         # 寄存器清除信号
-        if self.access in {"rc", "wc", "w1c", "w0c", "w1src", "w1crs", "woc", "wsrc", "wcrs"}:
-            self.port["clr"] = signal("{}_clr_o".format(self.name), width = 1, type = "output")
+        if self.access in {"rc", "wc", "w1c", "w0c", "woc", "wsrc", "wcrs"}:
+            self.port["clr"] = port("{}_clr".format(self.name), width = 1, type = "output")
 
         # 寄存器翻转端口
         if self.access in {"w1t", "w0t"}:
-            self.port["tog"] = signal("{}_tog_o".format(self.name), width = 1, type = "output")
+            self.port["tog"] = port("{}_tog".format(self.name), width = 1, type = "output")
         
         # 字段置位端口
-        if self.access in {"rs", "ws", "wsrc", "wcrs", "w1s", "w0s", "w1src", "w1crs"}:
-            self.port["set"] = signal("{}_set_o".format(self.name), width = 1, type = "output")
+        if self.access in {"rs", "ws", "wsrc", "wcrs", "w1s", "w0s"}:
+            self.port["set"] = port("{}_set".format(self.name), width = 1, type = "output")
 
         # 硬件控制端口
         if self.access in {"rwhs", "hsrw"}:
-            self.port["hw_rld"] = signal("{}_hw_rld_i".format(self.name), width = 1, type = "input")
-            self.port["hw_d"] = signal("{}_hw_d_i".format(self.name), width = self.width, type = "input")
+            self.port["hw_rld"] = port("{}_hw_rld".format(self.name), width = 1, type = "input")
+            self.port["hw_d"] = port("{}_hw_d".format(self.name), width = self.width, type = "input")
 
-        # 俯冲接口
+        # 需要产生脉冲，对于w1p或者w0p类型寄存器，其本身输出就是一个脉冲，不需要额外定义一个接口
         if self.access in {"wp", "rp"}:
-            self.port["pluse"] = signal("{}_pluse_o".format(self.name), width = 1, type = "output")
+            self.port["pluse"] = port("{}_pluse".format(self.name), width = 1, type = "output")
 
     # 生成字段所需要的flop
     def __gen_flop(self):
@@ -286,7 +262,7 @@ class   field:
                 elif key in {"val"}:
                     # w1p和w0p类型的寄存器还需要特殊处理一下，
                     # 因为在创建端口时创建了val类型
-                    if self.access in {"w1p", "w0p"}:
+                    if self.access in {"w1p", "w0p", "wp", "rp"}:
                         self.flop[key] = dff("{}".format(self.name), 1, "sclr", rstval=self.rstval)
                     else:
                         self.flop[key] = dff("{}".format(self.name), self.width, "lr", rstval=self.rstval)
@@ -303,6 +279,7 @@ class   field:
         if self.access in {"ro"}:
             return ""
         
+        # 每一个flop都需要定义变量
         for key in self.flop:
             var_block.append(self.flop[key].gen_var_block())
         
@@ -320,38 +297,51 @@ class   field:
         # 对于ro类型寄存器，不需要功能区
         if self.access in {"ro"}:
             return ""
+        
+        if self.width > 1:
+            bits_str = "[{} : {}]".format(self.msb, self.lsb)
+        else:
+            bits_str = "[{}]".format(self.lsb)
+            
+        
+        # if "val" in self.flop:
+        #     print(self.name, self.access)
+            
+        # if "set" in self.flop:
+        #     print("set", self.name, self.access)
 
         match self.access:
             case "rw":
                 rld_str = self.attribution.signal["wen"].name
-                if self.width > 1:
-                    d_str = "wdata_i[{} : {}]".format(self.msb, self.lsb)
-                else:
-                    d_str = "wdata_i[{}]".format(self.lsb)
+                d_str = "wdata_i{}".format(bits_str)
                 fun_block.append(self.flop["val"].gen_fun_block(rld=rld_str, d=d_str))
             
             # ro类型的寄存器只有输入，所以没有寄存器
-            case "ro":
-                return ""
+            # case "ro":
+            #     return ""
             
+            # 读清零
             case "rc":
                 set_str = self.attribution.signal["ren"].name
                 clr_str = self.flop["clr"].signal["q"].name
                 d_str = self.flop["clr"].signal["set"].name
                 fun_block.append(self.flop["clr"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
+            # 读置位
             case "rs":
                 set_str = self.attribution.signal["ren"].name
                 clr_str = self.flop["set"].signal["q"].name
                 d_str = self.flop["set"].signal["set"].name
                 fun_block.append(self.flop["set"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
+            # 写清零
             case "wc":
                 set_str = self.attribution.signal["wen"].name
                 clr_str = self.flop["clr"].signal["q"].name
                 d_str = self.flop["clr"].signal["set"].name
                 fun_block.append(self.flop["clr"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
+            # 写置位
             case "ws":
                 set_str = self.attribution.signal["wen"].name
                 clr_str = self.flop["set"].signal["q"].name
@@ -370,6 +360,7 @@ class   field:
                 d_str = self.flop["clr"].signal["set"].name
                 fun_block.append(self.flop["clr"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
+            # 写清零整个寄存器，读置位
             case "wcrs":
                 set_str = self.attribution.signal["ren"].name
                 clr_str = self.flop["set"].signal["q"].name
@@ -381,83 +372,66 @@ class   field:
                 d_str = self.flop["clr"].signal["set"].name
                 fun_block.append(self.flop["clr"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
+            # 写1置位对应的比特位，写0无影响，可读
             case "w1s":
                 set_str = "{} & wdata_i[{}]".format(self.attribution.signal["wen"].name, self.lsb)
                 clr_str = self.flop["set"].signal["q"].name
                 d_str = self.flop["set"].signal["set"].name
                 fun_block.append(self.flop["set"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
+            # 写0置位对应的比特位，写1无影响
             case "w0s":
                 set_str = "{} & (~wdata_i[{}])".format(self.attribution.signal["wen"].name, self.lsb)
                 clr_str = self.flop["set"].signal["q"].name
                 d_str = self.flop["set"].signal["set"].name
                 fun_block.append(self.flop["set"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
+            # 写1清零对应的比特位，写0无影响
             case "w1c":
                 set_str = "{} & wdata_i[{}]".format(self.attribution.signal["wen"].name, self.lsb)
                 clr_str = self.flop["clr"].signal["q"].name
                 d_str = self.flop["clr"].signal["set"].name
                 fun_block.append(self.flop["clr"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
+            # 写0清零对应的比特位
             case "w0c":
                 set_str = "{} & (~wdata_i[{}])".format(self.attribution.signal["wen"].name, self.lsb)
                 clr_str = self.flop["clr"].signal["q"].name
                 d_str = self.flop["clr"].signal["set"].name
                 fun_block.append(self.flop["clr"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
+            # 写1产生一个脉冲，写0无影响
             case "w1p":
                 set_str = "{} & wdata_i[{}]".format(self.attribution.signal["wen"].name, self.lsb)
                 clr_str = self.flop["val"].signal["q"].name
                 d_str = self.flop["val"].signal["set"].name
                 fun_block.append(self.flop["val"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
+            # 写0产生一个脉冲
             case "w0p":
                 set_str = "{} & (~wdata_i[{}])".format(self.attribution.signal["wen"].name, self.lsb)
                 clr_str = self.flop["val"].signal["q"].name
                 d_str = self.flop["val"].signal["set"].name
                 fun_block.append(self.flop["val"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
+            # 写1翻转对应的比特位，写0无影响
             case "w1t":
                 set_str = "{} & wdata_i[{}]".format(self.attribution.signal["wen"].name, self.lsb)
                 clr_str = self.flop["tog"].signal["q"].name
                 d_str = self.flop["tog"].signal["set"].name
                 fun_block.append(self.flop["tog"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
+            # 写0翻转对应的比特位
             case "w0t":
                 set_str = "{} & (~wdata_i[{}])".format(self.attribution.signal["wen"].name, self.lsb)
                 clr_str = self.flop["tog"].signal["q"].name
                 d_str = self.flop["tog"].signal["set"].name
                 fun_block.append(self.flop["tog"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
-            case "w1src":
-                set_str = "{} & wdata_i[{}]".format(self.attribution.signal["wen"].name, self.lsb)
-                clr_str = self.flop["set"].signal["q"].name
-                d_str = self.flop["set"].signal["set"].name
-                fun_block.append(self.flop["set"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
-
-                set_str = self.attribution.signal["wen"].name
-                clr_str = self.flop["clr"].signal["q"].name
-                d_str = self.flop["clr"].signal["set"].name
-                fun_block.append(self.flop["clr"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
-
-            case "w1crs":
-                set_str = "{} & wdata_i[{}]".format(self.attribution.signal["wen"].name, self.lsb)
-                clr_str = self.flop["clr"].signal["q"].name
-                d_str = self.flop["clr"].signal["set"].name
-                fun_block.append(self.flop["clr"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
-
-                set_str = self.attribution.signal["ren"].name
-                clr_str = self.flop["set"].signal["q"].name
-                d_str = self.flop["set"].signal["set"].name
-                fun_block.append(self.flop["set"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
-
+            # 只能写1次
             case "w1":
                 rld_str = "{} & (~{})".format(self.attribution.signal["wen"].name, self.flop["lock"].signal["q"].name)
-
-                if self.width > 1:
-                    d_str = "wdata_i[{} : {}]".format(self.msb, self.lsb)
-                else:
-                    d_str = "wdata_i[{}]".format(self.lsb)
+                d_str = "wdata_i{}".format(bits_str)
                 fun_block.append(self.flop["val"].gen_fun_block(rld=rld_str, d=d_str))
 
                 # lock标志
@@ -465,23 +439,33 @@ class   field:
                 d_str = "1'b1"
                 fun_block.append(self.flop["lock"].gen_fun_block(rld=rld_str, d=d_str))
 
+            # 软件及硬件都可以进行读写，硬件优先级高
             case "hsrw":
-                rld_str = "{} | {}".format(self.attribution.signal["wen"].name, self.port["rld"].name)
+                rld_str = "{} | {}".format(self.attribution.signal["wen"].name, self.port["hw_rld"].name)
+                d_str = "{} ? {} : wdata_i{}".format(self.port["hw_rld"].name, self.port["hw_d"].name, bits_str)
+                fun_block.append(self.flop["val"].gen_fun_block(rld=rld_str, d=d_str))
 
-                if self.width > 1:
-                    d_str = "{} ? {} : wdata_i[{} : {}]".format(self.attribution.signal["wen"].name, self.port["d"].name, self.msb, self.lsb)
-                else:
-                    d_str = "{} ? {} : wdata_i[{}]".format(self.attribution.signal["wen"].name, self.port["d"].name, self.lsb)
-                
-                fun_block.append(self.flop["lock"].gen_fun_block(rld=rld_str, d=d_str))
-
+            # 软件及硬件都可以进行操作，软件优先级更高
             case "rwhs":
-                rld_str = "{} | {}".format(self.attribution.signal["wen"].name, self.port["rld"].name)
-                if self.width > 1:
-                    d_str = "{} ? {} : wdata_i[{} : {}]".format(self.attribution.signal["wen"].name, self.port["d"].name, self.msb, self.lsb)
-                else:
-                    d_str = "{} ? {} : wdata_i[{}]".format(self.attribution.signal["wen"].name, self.port["d"].name, self.lsb)
-                fun_block.append(self.flop["lock"].gen_fun_block(rld=rld_str, d=d_str))
+                rld_str = "{} | {}".format(self.attribution.signal["wen"].name, self.port["hw_rld"].name)
+                d_str = "{} ? wdata_i{} : {}".format(self.attribution.signal["wen"].name, bits_str, self.port["hw_d"].name)
+                fun_block.append(self.flop["val"].gen_fun_block(rld=rld_str, d=d_str))
+
+            case "wp":
+                rld_str = self.attribution.signal["wen"].name
+                d_str = "wdata_i{}".format(bits_str)
+                fun_block.append(self.flop["val"].gen_fun_block(rld=rld_str, d=d_str))
+
+                set_str = self.attribution.signal["wen"].name
+                clr_str = self.flop["pluse"].signal["q"].name
+                d_str = self.flop["pluse"].signal["set"].name
+                fun_block.append(self.flop["pluse"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
+
+            case "rp":
+                set_str = self.attribution.signal["wen"].name
+                clr_str = self.flop["pluse"].signal["q"].name
+                d_str = self.flop["pluse"].signal["set"].name
+                fun_block.append(self.flop["pluse"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
         return  fun_block
 
@@ -506,10 +490,7 @@ class   field:
 
         # 处理每一个端口
         for key in self.port:
-            # 端口在定义时，多缩进一格
-            port_block.append("\t{}".format(self.port[key].gen_block()))
-
-        # print(port_block)
+            port_block.append("{},\n".format(self.port[key].gen_block()))
 
         return  port_block
 
@@ -521,8 +502,6 @@ class   register:
         
         # 未使用的比特
         self.unused_bits = [i for i in range(0, width)]
-        
-        # print(self.unused_bits, type(self.unused_bits))
 
         # 寄存器字段为空
         self.field = []
@@ -548,7 +527,7 @@ class   register:
     def __unused_bits_split(self):
         lst = self.unused_bits
         new_list = []
-        # print(self.unused_bits)
+
         for i, j in zip(lst, lst[1:]):
             if j - i > 1:
                 new_list.append(lst[:lst.index(j)])
@@ -557,23 +536,36 @@ class   register:
         
         self.unused_bits = new_list
 
+    # 检查寄存器的所有字段，是否有需要执行写操作的
+    def __need_wen(self):
+        for var in self.field:
+            if "w" in var.access:
+                return  True
+            
+        return False
+    
+    # 检查寄存器的所有字段，是否有需要执行读操作的
+    def __need_ren(self):
+        for var in self.field:
+            if var.access in {"rc", "wsrc", "wcrs", "rp"}:
+                return  True
+            
+        return False
+    
     # 新增一个字段
     def add_field(self, info):
         
         # 检查名字的有效性
         if info["name"] is None:
-            print("Error: Filed name invalid!!!")
-            exit(0)
+            raise Exception("Filed name invalid!!!")
 
         # 寄存器的MSB小于低位，报错
         if info["msb"] < info["lsb"]:
-            print("Error: The MSB of domain {} of register {} is smaller than that of LSB!!!".format(info["name"],  self.name))
-            exit(0)
+            raise Exception("The MSB of domain {} of register {} is smaller than that of LSB!!!".format(info["name"],  self.name))
         
         # 检测默认值
         if info["rstval"] is None: 
-            print("Error: The default value of register {} field {} cannot be empty!!!".format(self.name, info["name"]))
-            exit(0)
+            raise Exception("The default value of register {} field {} cannot be empty!!!".format(self.name, info["name"]))
         
         # 将已经使用的bit移除
         for i in range(info["lsb"], info["msb"] + 1):
@@ -596,10 +588,25 @@ class   register:
 
         var_block.append("\n// {} register\n".format(self.name))
 
-        # 处理每一个信号
-        for key in self.signal:
-            var_block.append(self.signal[key].gen_block())
-            
+        # # 处理每一个信号
+        # for key in self.signal:
+        #     var_block.append(self.signal[key].gen_block())
+
+        # 如果不需要执行写操作，则直接注释
+        comment_str = "// "
+        if self.__need_wen():
+            comment_str = ""
+        var_block.append("{}{}".format(comment_str, self.signal["wen"].gen_block()))
+
+        # 如果不需要执行读操作，则直接注释
+        comment_str = "// "
+        if self.__need_ren():
+            comment_str = ""
+        var_block.append("{}{}".format(comment_str, self.signal["ren"].gen_block()))
+
+        var_block.append(self.signal["full"].gen_block())
+
+        # 处理每一个字段的变量
         for var in self.field:
             var_block.extend(var.gen_var_block())
         
@@ -622,13 +629,27 @@ class   register:
     def gen_fun_block(self):
         fun_block = []
         
-        fun_block.append("\n// \n")
-        
+        # fun_block.append("\n// \n")
+
+        fun_block.append("\n")
+        fun_block.append("//////////////////////////////////////////////////////////////////////////////\n")
+        fun_block.append("//\t\t\t\t\t\t{} function block\t\t\t\t\n".format(self.name))
+        fun_block.append("//////////////////////////////////////////////////////////////////////////////\n")
+
+        # 如果不需要执行写操作，则直接注释
+        comment_str = "// "
+        if self.__need_wen():
+            comment_str = ""
+
         # wen
-        fun_block.append("assign\t\t{} = (waddr_i == {}) & wen_i;\n".format(self.signal["wen"].name, self.param))
+        fun_block.append("{}assign\t\t{} = (waddr_i == {}) & wen_i;\n".format(comment_str, self.signal["wen"].name, self.param))
+
+        comment_str = "// "
+        if self.__need_ren():
+            comment_str = ""
 
         # ren
-        fun_block.append("assign\t\t{} = (raddr_i == {}) & ren_i;\n".format(self.signal["ren"].name, self.param))
+        fun_block.append("{}assign\t\t{} = (raddr_i == {}) & ren_i;\n".format(comment_str, self.signal["ren"].name, self.param))
 
         for var in self.field:
             fun_block.extend(var.gen_fun_block())
@@ -644,7 +665,6 @@ class   register:
 
         # 查找未使用到bits，对其分组，并设置为0
         self.__unused_bits_split()
-        print(len(self.unused_bits))
         for bits in self.unused_bits:
 
             width = len(bits)
@@ -659,11 +679,14 @@ class   register:
         
         return fun_block
 
+    # 生成输出区
     def gen_out_block(self):
         out_block = []
 
         out_block.append("\n// {} register output.\n".format(self.name))
         
+        # out_block.append("\n")
+
         for var in self.field:
             out_block.extend(var.gen_out_block())
 
@@ -677,10 +700,28 @@ class   reg_block:
         self.baseaddr = baseaddr
 
         self.reglist = []
+        
+        self.__gen_port()
+        
+    def __gen_port(self):
+        self.port = {}
+        
+        self.port["waddr"] = port("waddr", 32, "input")
+        self.port["wdata"] = port("wdata", self.width, "input")
+        self.port["wen"] = port("wen", 1, "input")
+        self.port["raddr"] = port("raddr", 32, "input")
+        self.port["rdata"] = port("rdata", self.width, "output")
+        self.port["ren"] = port("ren", 1, "input")
+        self.port["clk"] = port("clk", 1, "input")
+        self.port["rstn"] = port("rstn", 1, "input")
 
+        # print(list(iter(self.port.keys()))[-1])
+        
     # 添加一个寄存器
-    def add_reg(self, reg):
+    def add_reg(self, name, addr):
+        reg = register(name, addr, self.width)
         self.reglist.append(reg)
+        return reg
 
     def gen_rtl(self):
         rtl_block = []
@@ -714,6 +755,7 @@ class   reg_block:
         read_block = []
 
         read_block.append("\n// read \n")
+        read_block.append("{:<6} [{} : {}]\t\t\t{};\n".format("reg", self.width - 1, 0, "rdata_q"))
         read_block.append("always@(*) begin\n")
         read_block.append("\trdata_q = {}'d0\n".format(self.width))
         read_block.append("\tcase(raddr_i)\n")
@@ -734,12 +776,12 @@ class   reg_block:
         for reg in self.reglist:
             port_block.extend(reg.gen_port_block())
 
-        port_block.append("\tinput {:<8}\t\t\t\twaddr_i,\n".format("[31 : 0]"))
-        port_block.append("\tinput {:<8}\t\t\t\twdata_i,\n".format("[31 : 0]"))
-        port_block.append("\tinput {:<8}\t\t\t\traddr_i,\n".format("[31 : 0]"))
-        port_block.append("\t{:<6} {:<8}\t\t\t\trdata_o,\n".format("output", "[31 : 0]"))
-        port_block.append("\tinput\t\t\t\t\t\tclk_i,\n")
-        port_block.append("\tinput\t\t\t\t\t\trstn_i\n")
+        for key in self.port:
+            if key == list(iter(self.port.keys()))[-1]:
+                port_block.append("{}\n".format(self.port[key].gen_block()))
+            else:
+                port_block.append("{},\n".format(self.port[key].gen_block()))
+        
         port_block.append(");\n")
         
         return port_block
@@ -755,6 +797,7 @@ class   reg_block:
     def __gen_param_block(self):
         param_block = []
 
+        param_block.append("\n// register parameter.\n")
         for reg in self.reglist:
             param_block.extend(reg.gen_param_block())
         

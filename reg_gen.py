@@ -16,8 +16,6 @@ import  argparse
 
 regblk =  reg_block("temeplate", 32, 100)
 
-reg_list = []
-
 
 # 解析头部信息
 def parse_header(arg):
@@ -83,31 +81,13 @@ def parse_reg(sheet: worksheet, min_row, max_row):
                 except ValueError:
                     print("Error: register {} offset not valid Hex".format(offset))
                     exit(0)
-            reg = register(reg_name, reg_addr, 32)
-            regblk.add_reg(reg)
+            # reg = register(reg_name, reg_addr, 32)
+            reg = regblk.add_reg(reg_name, reg_addr)
             # 新增一个寄存器
             # reg_list.append(register(reg_name, reg_addr, 32))
         
         # 解析寄存器字段
         parse_field(reg, row)
-            
-        
-        # 寄存器不同的比特域
-        # if field_info["name"] is not None:
-            
-        #     # 寄存器的MSB小于低位，报错
-        #     if field_info["msb"] < field_info["lsb"]:
-        #         print("Error: The MSB of domain {} of register {} is smaller than that of LSB!!!".format(field_info["name"],  list[-1]["name"]))
-        #         exit(0)
-            
-        #     # 检测默认值
-        #     if field_info["default value"] is None: 
-        #         print("Error: The default value of register {} field {} cannot be empty!!!".format(list[-1]["name"], field_info["name"]))
-        #         exit(0)
-            
-        #     reg_list[-1].add_field(field_info)
-            
-        # reg_list[-1].gen_var()
         
     return  reg_list
 
@@ -124,67 +104,12 @@ def generate_reg_file(reg_list):
     block = []
     output = []
 
+    # reg_file.write("".join(regblk.gen_rtl()))
+
     for line in regblk.gen_rtl():
         reg_file.write("".join(line))
     
-    # for reg in reg_list:
-    #     for line in reg.gen_port_block():
-    #         reg_file.write("".join(line))
-    
-    # # parameter 寄存器地址定义
-    # for reg in reg_list:
-    #     for line in reg.gen_param_block():
-    #         reg_file.write("".join(line))
-            
-    # for reg in reg_list:
-    #     for line in reg.gen_var_block():
-    #         reg_file.write("".join(line))
-            
-            
-    # for reg in reg_list:
-    #     for line in reg.gen_fun_block():
-    #         reg_file.write("".join(line))
 
-    # for reg in reg_list:
-    #     for line in reg.gen_out_block():
-    #         reg_file.write("".join(line))
-
-    # for reg in reg_list:
-    #     for line in reg.gen_read_block():
-    #         reg_file.write("".join(line))
-    
-    # reg_file.write("\n")
-    
-    # # 寄存器相关变量
-    # for reg in reg_list:
-    #     reg_file.write("".join(reg.gen_var()))
-    #     port.append("\t//register {} port\n".format(reg["name"]))
-    #     for field in reg["field"]:
-    #         port.append(format_port(field["port"]["dir"], field["port"]["width"], field["port"]["name"], False))
-            
-    #         # for var in field["var"]:
-    #         #     var_str.append(format_var(var["name"], ))
-    #         # var.append(format_var(field["port"]["name"], field["port"]["width"]))
-        
-    #     port.append("\n")
-        
-            
-    #     param.append(format_param(reg["param"], reg["offset"]))
-    #     # print(port)
-        
-    # port.append(format_port("input", "", "clk_i" ,False))
-    # port.append(format_port("input", "", "rstn_i" ,True))
-    
-    # reg_file.write("".join(module_start))
-    # reg_file.write("(\n")
-    # reg_file.write("".join(port))
-    # # reg_file.write("".join(global_port))
-    # reg_file.write(");\n")
-    
-    # reg_file.write("".join(param))
-    # reg_file.write("\n")
-    # reg_file.write("\n".join(var_str))
-    # reg_file.write("endmodule\n")
     reg_file.close()
     pass
 
