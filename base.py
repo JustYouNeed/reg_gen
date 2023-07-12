@@ -10,13 +10,18 @@ class   signal:
         self.width = width
         self.type = type
 
-    def gen_block(self):
+    # 产生定义块
+    def gen_declare_block(self):
         width_str = ""
 
         if self.width > 1:
             width_str = "[{} : {}]".format(self.width - 1, 0)
 
         return  "{:<4} {:<8}\t\t\t\t{},\n".format(self.type, width_str, self.name)
+    
+    # 输出赋值块
+    def gen_assign_block(self, value : str = 'd0'):
+        return  "assign\t\t{} = {};\n".format(self.name, value)
 
 # 端口类
 class   port:
@@ -34,14 +39,27 @@ class   port:
         self.width = width
         self.type = type
 
-    def gen_block(self):
-        
+    # 产生定义块
+    def gen_declare_block(self):
         width_str = ""
 
         if self.width > 1:
             width_str = "[{} : {}]".format(self.width - 1, 0)
 
-        return  "\t{:<6} {:<8}\t\t\t\t{}".format(self.type, width_str, self.name)
+        return  "\t{:<6} {:<8}\t\t\t\t{},\n".format(self.type, width_str, self.name)
+    
+    # 输出赋值块
+    def gen_assign_block(self, value : str = 'd0'):
+        return  "assign\t\t{} = {};\n".format(self.name, value)
+
+    # def gen_block(self):
+        
+    #     width_str = ""
+
+    #     if self.width > 1:
+    #         width_str = "[{} : {}]".format(self.width - 1, 0)
+
+    #     return  "\t{:<6} {:<8}\t\t\t\t{}".format(self.type, width_str, self.name)
 
 
 # 触发器
@@ -83,7 +101,7 @@ class dff:
         var_block.append("\n// {} signal definition\n".format(self.name))
 
         for key in self.signal:
-            var_block.append(self.signal[key].gen_block())
+            var_block.append(self.signal[key].gen_declare_block())
 
         return var_block
 
@@ -96,15 +114,15 @@ class dff:
 
         # print(self.type)
         if self.type in {"sclr"}:
-            fun_block.append("assign\t\t{} = {};\n".format(self.signal["set"].name, set))
-            fun_block.append("assign\t\t{} = {};\n".format(self.signal["clr"].name, clr))
-            fun_block.append("assign\t\t{} = {} | {};\n".format(self.signal["rld"].name, self.signal["set"].name, self.signal["clr"].name))
-
+            fun_block.append(self.signal["set"].gen_assign_block(set))
+            fun_block.append(self.signal["clr"].gen_assign_block(clr))
+            fun_block.append(self.signal["rld"].gen_assign_block("{} | {}".format(self.signal["set"].name, self.signal["clr"].name)))
         elif self.type in {"lr", "l"}:
-            fun_block.append("assign\t\t{} = {};\n".format(self.signal["rld"].name, rld))
+            fun_block.append(self.signal["rld"].gen_assign_block(rld))
+
         # D端
-        fun_block.append("assign\t\t{} = {};\n".format(self.signal["d"].name, d))
-        
+        fun_block.append(self.signal["d"].gen_assign_block(d))
+
         # 这两种类型的flop具有复位的rld
         if self.type in {"lr", "sclr"}:
             fun_block.append("always@(posedge clk_i or negedge rstn_i) begin\n")
@@ -133,3 +151,11 @@ class dff:
         fun_block.append("end\n")
 
         return fun_block    
+    
+# 总线类
+class   bus:
+    def __init__(self, name : str = "bus", aw : int = 32, dw : int = 32) -> None:
+        self.name = name
+        self.aw = aw
+        self.dw = dw
+        

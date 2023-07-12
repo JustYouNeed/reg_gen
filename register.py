@@ -326,7 +326,8 @@ class   field:
         # 遍历每一个端口，输出端口都需要赋值
         for key in self.port:
             if self.port[key].type in {"output"}:
-                out_block.append("assign\t\t{} = {};\n".format(self.port[key].name, self.flop[key].signal["q"].name))
+                right_val = self.flop[key].signal["q"].name
+                out_block.append(self.port[key].gen_assign_block(right_val))
 
         return out_block
     
@@ -336,7 +337,7 @@ class   field:
 
         # 处理每一个端口
         for key in self.port:
-            port_block.append("{},\n".format(self.port[key].gen_block()))
+            port_block.append("{},\n".format(self.port[key].gen_declare_block()))
 
         return  port_block
 
@@ -439,15 +440,15 @@ class   register:
         comment_str = "// "
         if self.__need_wen():
             comment_str = ""
-        var_block.append("{}{}".format(comment_str, self.signal["wen"].gen_block()))
+        var_block.append("{}{}".format(comment_str, self.signal["wen"].gen_declare_block()))
 
         # 对于不使用ren信号的寄存器，采用注释的方式，而不是直接忽略
         comment_str = "// "
         if self.__need_ren():
             comment_str = ""
-        var_block.append("{}{}".format(comment_str, self.signal["ren"].gen_block()))
+        var_block.append("{}{}".format(comment_str, self.signal["ren"].gen_declare_block()))
 
-        var_block.append(self.signal["full"].gen_block())
+        var_block.append(self.signal["full"].gen_declare_block())
 
         # 处理每一个字段的变量
         for var in self.field:
@@ -484,13 +485,15 @@ class   register:
         comment_str = "// "
         if self.__need_wen():
             comment_str = ""
-        fun_block.append("{}assign\t\t{} = (waddr_i == {}) & wen_i;\n".format(comment_str, self.signal["wen"].name, self.param))
+        right_val = "(waddr_i == {}) & wen_i".format(self.param)
+        fun_block.append("{}{}".format(comment_str, self.signal["wen"].gen_assign_block(right_val)))
 
         # ren
         comment_str = "// "
         if self.__need_ren():
             comment_str = ""
-        fun_block.append("{}assign\t\t{} = (raddr_i == {}) & ren_i;\n".format(comment_str, self.signal["ren"].name, self.param))
+        right_val = "(waddr_i == {}) & ren_i".format(self.param)
+        fun_block.append("{}{}".format(comment_str, self.signal["ren"].gen_assign_block(right_val)))
 
         for var in self.field:
             fun_block.extend(var.gen_fun_block())
@@ -665,9 +668,9 @@ class   reg_block:
         port_block.append("\t// register access port.\n")
         for key in self.port:
             if key == list(iter(self.port.keys()))[-1]:
-                port_block.append("{}\n".format(self.port[key].gen_block()))
+                port_block.append("{}\n".format(self.port[key].gen_declare_block()))
             else:
-                port_block.append("{},\n".format(self.port[key].gen_block()))
+                port_block.append("{},\n".format(self.port[key].gen_declare_block()))
         
         port_block.append(");\n")
         
