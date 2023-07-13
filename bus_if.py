@@ -27,8 +27,8 @@ class   apb_bus(bus):
     def __gen_flop(self):
         self.flop = {}
 
-        self.flop["waddr"] = dff("waddr_q", self.aw, type="lr", rstval="d0")
-        self.flop["rdata"] = dff("rdata_q", self.dw, type="lr", rstval="d0")
+        self.flop["waddr"] = dff("waddr", self.aw, type="lr", rstval="d0")
+        self.flop["rdata"] = dff("rdata", self.dw, type="lr", rstval="d0")
     
     # 生成总线所需信号
     def __gen_signal(self):
@@ -37,26 +37,26 @@ class   apb_bus(bus):
         self.signal["slverr"] = signal("slverr", width=1, type="wire")
 
     # 输出端口区
-    def gen_port_block(self):
-        port_block = []
-        for key in self.port:
-            port_block.append("{},\n".format(self.port[key].gen_declare_block()))
+    # def gen_port_block(self):
+    #     port_block = []
+    #     for key in self.port:
+    #         port_block.append("{},\n".format(self.port[key].gen_declare_block()))
 
-        return port_block
+    #     return port_block
     
     # 输出变量区
-    def gen_var_block(self):
-        var_block = []
+    # def gen_var_block(self):
+    #     var_block = []
 
-        for key in self.signal:
-            var_block.append(self.signal[key].gen_declare_block())
+    #     for key in self.signal:
+    #         var_block.append(self.signal[key].gen_declare_block())
 
-        var_block.append("\n")
+    #     var_block.append("\n")
         
-        for key in self.flop:
-            var_block.extend(self.flop[key].gen_var_block())
+    #     for key in self.flop:
+    #         var_block.extend(self.flop[key].gen_var_block())
 
-        return  var_block
+    #     return  var_block
     
     # 功能块
     def gen_fun_block(self):
@@ -78,9 +78,9 @@ class   apb_bus(bus):
         out_block = []
 
         out_block.append("// \n")
-        out_block.append("assign\t\t{} = {};\n".format(self.port["prdata"].name, self.flop["rdata"].name))
-        out_block.append("assign\t\t{} = 1'b1;\n".format(self.port["pready"]))
-        out_block.append("assign\t\t{} = 1'b0;\n".format(self.port["pslverr"].name))
+        out_block.append("assign\t\t{} = {};\n".format(self.port["prdata"].name, self.flop["rdata"].signal["q"].name))
+        out_block.append("assign\t\t{} = 1'b1;\n".format(self.port["pready"].name))
+        out_block.append("assign\t\t{} = {};\n".format(self.port["pslverr"].name, self.signal["slverr"].name))
 
         return out_block
 
@@ -98,7 +98,7 @@ class   ahb_bus(bus):
 # axi-lite总线
 class   axi_lite_bus(bus):
     def __init__(self, aw: int = 32, dw: int = 32) -> None:
-        super().__init__("axi-lite", aw, dw)
+        super().__init__("axi_lite", aw, dw)
         
         self.__gen_port()
         self.__gen_signal()
@@ -122,7 +122,7 @@ class   axi_lite_bus(bus):
         self.port["wvalid"] = port("s_axi_wvalid", width=1, type="input")
         self.port["wready"] = port("s_axi_wready", width=1, type="output")
         self.port["wdata"] = port("s_axi_wdata", width=self.dw, type="input")
-        self.port["wstrb"] = port("s_axi_wstrb", width=self.dw/8, type="input")
+        self.port["wstrb"] = port("s_axi_wstrb", width=int(self.dw/8), type="input")
 
         # b
         self.port["bready"] = port("s_axi_bready", width=1, type="input")
@@ -186,11 +186,14 @@ class   axi_lite_bus(bus):
         right_val = "{} & {}".format(self.port["rvalid"].name, self.port["rready"].name)
         fun_block.append(self.signal["r_hsked"].gen_assign_block(right_val))
 
+        # awready
+        fun_block.append("// awready\n")
         set_str = self.signal["b_hsked"].name
         clr_str = self.signal["aw_hsked"].name
         d_str = self.flop["awready"].signal["set"].name
         fun_block.extend(self.flop["awready"].gen_fun_block(set=set_str, clr=clr_str, d=d_str))
 
+        fun_block.append("// waddr\n")
         rld_str = self.signal["aw_hsked"].name
         d_str = self.port["awaddr"].name
         fun_block.extend(self.flop["waddr"].gen_fun_block(rld=rld_str, clr=clr_str, d=d_str))
@@ -225,18 +228,41 @@ class   axi_lite_bus(bus):
 
         return fun_block
     
+    # def gen_var_block(self):
+    #     var_block = []
+
+    #     for key in self.signal:
+    #         var_block.append(self.signal[key].gen_declare_block())
+
+    #     var_block.append("\n")
+        
+    #     for key in self.flop:
+    #         var_block.extend(self.flop[key].gen_var_block())
+
+    #     return  var_block
 
     def gen_out_block(self):
         out_block = []
 
-        out_block.append("assign\t\t{} = {};\n".format(self.port["awready"].name, self.flop["awready"].name))
-        out_block.append("assign\t\t{} = {};\n".format(self.port["wready"].name, self.flop["wready"].name))
-        out_block.append("assign\t\t{} = {};\n".format(self.port["bvalid"].name, self.flop["bvalid"].name))
-        out_block.append("assign\t\t{} = {};\n".format(self.port["breasp"].name, "2'b00"))
-        out_block.append("assign\t\t{} = {};\n".format(self.port["arready"].name, self.flop["arready"].name))
-        out_block.append("assign\t\t{} = {};\n".format(self.port["rvalid"].name, self.flop["rvalid"].name))
-        out_block.append("assign\t\t{} = {};\n".format(self.port["rdata"].name, self.flop["rdata"].name))
+        out_block.append("assign\t\t{} = {};\n".format(self.port["awready"].name, self.flop["awready"].signal["q"].name))
+        out_block.append("assign\t\t{} = {};\n".format(self.port["wready"].name, self.flop["wready"].signal["q"].name))
+        out_block.append("assign\t\t{} = {};\n".format(self.port["bvalid"].name, self.flop["bvalid"].signal["q"].name))
+        out_block.append("assign\t\t{} = {};\n".format(self.port["bresp"].name, "2'b00"))
+        out_block.append("assign\t\t{} = {};\n".format(self.port["arready"].name, self.flop["arready"].signal["q"].name))
+        out_block.append("assign\t\t{} = {};\n".format(self.port["rvalid"].name, self.flop["rvalid"].signal["q"].name))
+        out_block.append("assign\t\t{} = {};\n".format(self.port["rdata"].name, self.flop["rdata"].signal["q"].name))
         out_block.append("assign\t\t{} = {};\n".format(self.port["rresp"].name, "2'b00"))
+
+        return  out_block
+    
+    # def gen_port_block(self):
+    #     port_block = []
+    #     for key in self.port:
+    #         port_block.append("{},\n".format(self.port[key].gen_declare_block()))
+
+    #     return port_block
+
+
 
 
   
@@ -286,6 +312,11 @@ class   bus_if:
             else:
                 port_block.append("{},\n".format(self.port[key].gen_declare_block()))
 
+        return port_block
+    
+    def gen_var_block(self):
+        return  self.bus.gen_var_block()
+
     def gen_fun_block(self):
         return  self.bus.gen_fun_block()
     
@@ -298,9 +329,16 @@ class   bus_if:
         if self.type == "apb":
             wen = "{} & {} & {}".format(self.bus.port["psel"].name, self.bus.port["penable"].name, self.bus.port["pwrite"].name)  
             wdata = self.bus.port["pwdata"].name
-            waddr = self.bus.flop["wdata"].name
+            waddr = self.bus.flop["waddr"].signal["q"].name
             ren = "{} & {} & (~{})".format(self.bus.port["psel"].name, self.bus.port["penable"].name, self.bus.port["pwrite"].name)  
             raddr = self.bus.port["paddr"].name
+
+        elif self.type == "axi-lite":
+            wen = self.bus.signal["w_hsked"].name
+            wdata = self.bus.port["wdata"].name
+            waddr = self.bus.flop["waddr"].signal["q"].name
+            ren = self.bus.signal["ar_hsked"].name
+            raddr = self.bus.port["araddr"].name
         
         # wen
         out_block.append("assign\t\t{} = {};\n".format(self.port["wen"].name, wen))
@@ -308,3 +346,36 @@ class   bus_if:
         out_block.append("assign\t\t{} = {};\n".format(self.port["waddr"].name, waddr))
         out_block.append("assign\t\t{} = {};\n".format(self.port["ren"].name, ren))
         out_block.append("assign\t\t{} = {};\n".format(self.port["raddr"].name, raddr))
+
+        return  out_block
+    
+    # 获取所有端口
+    def get_ports(self):
+
+        ports = []
+
+        for key in self.bus.port:
+            ports.append(self.bus.port[key])
+
+        for key in self.port:
+            ports.append(self.port[key])
+
+        return ports
+    
+    def gen_rtl(self):
+        rtl_block = []
+
+        rtl_block.append("module {}\n".format(self.bus.name))
+        rtl_block.append("(\n")
+
+        rtl_block.extend(self.gen_port_block())
+
+        rtl_block.append(");\n")
+
+        rtl_block.extend(self.gen_var_block())
+        rtl_block.extend(self.gen_fun_block())
+        rtl_block.extend(self.gen_out_block())
+
+        rtl_block.append("\nendmodule\n")
+        
+        return rtl_block

@@ -9,6 +9,7 @@ from    openpyxl.worksheet  import  worksheet
 from    openpyxl.cell import    MergedCell
 
 from  register  import  *
+from    bus_if  import  *
 
 # 参数解析模块
 import  argparse
@@ -89,6 +90,10 @@ def generate_reg_file(reg_list):
 
     # reg_file.close()
     pass
+
+reg_if = bus_if(type="apb")
+
+
 
 def main():
     workbook = openpyxl.load_workbook("reg template.xlsx", data_only=True)

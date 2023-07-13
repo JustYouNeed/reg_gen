@@ -3,6 +3,7 @@ import  os
 import  logging
 import  math
 from base import *
+from    bus_if  import  *
 
 # 寄存器字段定义
 class   field:
@@ -97,6 +98,15 @@ class   field:
         # 需要产生脉冲，对于w1p或者w0p类型寄存器，其本身输出就是一个脉冲，不需要额外定义一个接口
         if self.access in {"wp", "rp"}:
             self.port["pluse"] = port("{}_pluse".format(self.name), width = 1, type = "output")
+
+
+    def get_ports(self):
+        port_list = []
+
+        for key in self.port:
+            port_list.append(self.port[key])
+
+        return port_list
 
     # 生成字段所需要的flop
     def __gen_flop(self):
@@ -469,6 +479,13 @@ class   register:
         port_block.append("\n")
         
         return port_block
+    
+    def get_ports(self):
+        port_list = []
+        for var in self.field:
+            port_list.extend(var.get_ports())
+
+        return port_list
 
     # function
     def gen_fun_block(self):
@@ -554,12 +571,12 @@ class   reg_block:
         for reg in self.reglist:
             if reg.addr > max_addr:
                 max_addr = reg.addr
-        addr_width = math.ceil(math.log2(max_addr))
+        self.aw = math.ceil(math.log2(max_addr))
         
-        self.port["waddr"] = port("waddr", addr_width, "input")
+        self.port["waddr"] = port("waddr", self.aw, "input")
         self.port["wdata"] = port("wdata", self.width, "input")
         self.port["wen"] = port("wen", 1, "input")
-        self.port["raddr"] = port("raddr", addr_width, "input")
+        self.port["raddr"] = port("raddr", self.aw, "input")
         self.port["rdata"] = port("rdata", self.width, "output")
         self.port["ren"] = port("ren", 1, "input")
         self.port["clk"] = port("clk", 1, "input")
@@ -609,6 +626,7 @@ class   reg_block:
         self.__gen_port()
 
         rtl_block.append("module {}\n".format(name))
+        rtl_block.append("(\n")
 
         # 输出端口定义
         rtl_block.extend(self.__gen_port_block())
@@ -630,12 +648,42 @@ class   reg_block:
 
         rtl_block.append("\nendmodule\n")
 
+        self.bus = bus_if(type="axi-lite", aw=self.aw)
+
+        for val in self.get_ports():
+            print(val.name, val.type, val.width)
+
+        # print(self.bus.get_ports())
+
         # 创建rtl文件
         with open("{}{}.v".format(path, name), "w") as f:
             for line in rtl_block:
                 f.write("".join(line))
+
+            for line in self.bus.gen_rtl():
+                f.write("".join(line))
+
+            # for line in self.bus.gen_var_block():
+            #     f.write("".join(line))
+
+            # for line in self.bus.gen_fun_block():
+            #     f.write("".join(line))
+
+            # for line in self.bus.gen_out_block():
+            #     f.write("".join(line))
+
         
         return rtl_block
+    
+    def get_ports(self):
+        port_list = []
+        for var in self.reglist:
+            port_list.extend(var.get_ports())
+
+        for key in self.port:
+            port_list.append(self.port[key])
+
+        return port_list
 
     # 生成读block
     def __gen_read_block(self):
@@ -658,8 +706,6 @@ class   reg_block:
     def __gen_port_block(self):
         port_block = []
 
-        port_block.append("(\n")
-
         # 各个寄存器的端口
         for reg in self.reglist:
             port_block.extend(reg.gen_port_block())
@@ -672,7 +718,6 @@ class   reg_block:
             else:
                 port_block.append("{},\n".format(self.port[key].gen_declare_block()))
         
-        port_block.append(");\n")
         
         return port_block
     

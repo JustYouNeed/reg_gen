@@ -46,7 +46,7 @@ class   port:
         if self.width > 1:
             width_str = "[{} : {}]".format(self.width - 1, 0)
 
-        return  "\t{:<6} {:<8}\t\t\t\t{},\n".format(self.type, width_str, self.name)
+        return  "\t{:<6} {:<8}\t\t\t\t{}".format(self.type, width_str, self.name)
     
     # 输出赋值块
     def gen_assign_block(self, value : str = 'd0'):
@@ -158,4 +158,45 @@ class   bus:
         self.name = name
         self.aw = aw
         self.dw = dw
+
+        self.__gen_port()
+        self.__gen_signal()
+        self.__gen_flop()
+
+    def __gen_port(self):
+        self.port = {}
+
+    # 生成总线所需信号
+    def __gen_signal(self):
+        self.signal = {}
+
+    def __gen_flop(self):
+        self.flop = {}
+    
+    
+    def gen_port_block(self):
+        port_block = []
+        for key in self.port:
+            port_block.append("{},\n".format(self.port[key].gen_declare_block()))
+
+        return port_block
+
+    def gen_var_block(self):
+        var_block = []
+
+        for key in self.signal:
+            var_block.append(self.signal[key].gen_declare_block())
+
+        var_block.append("\n")
+        
+        for key in self.flop:
+            var_block.extend(self.flop[key].gen_var_block())
+
+        return  var_block
+    
+    def gen_fun_block(self):
+        return ""
+    
+    def gen_out_block(self):
+        return ""
         
