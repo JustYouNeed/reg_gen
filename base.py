@@ -25,19 +25,28 @@ class   signal:
 
 # 端口类
 class   port:
-    def __init__(self, name, width = 1, type = "output"):
+    def __init__(self, name, width = 1, dir = "output", attr : str = "data"):
 
-        if type == "input":
-            self.name = "{}_i".format(name)
-        elif type == "output":
-            self.name = "{}_o".format(name)
-        elif type == "inout":
-            self.name = "{}_io".format(name)
-        else:
-            raise Exception("unsupported port type : {}".format(type))
+        # if type == "input":
+        #     self.name = "{}_i".format(name)
+        # elif type == "output":
+        #     self.name = "{}_o".format(name)
+        # elif type == "inout":
+        #     self.name = "{}_io".format(name)
+        # else:
+
+        self.name = name
+        self.attr = attr
+
+        # 判断
+        if dir not in {"input", "output", "inout"}:
+            raise Exception("unsupported  Zport type : {}".format(type))
+        
+        if attr not in {"data", "clock", "reset", "pluse"}:
+            raise Exception("unsupported port attr : {}".format(attr))
 
         self.width = width
-        self.type = type
+        self.dir = dir
 
     # 产生定义块
     def gen_declare_block(self):
@@ -46,30 +55,23 @@ class   port:
         if self.width > 1:
             width_str = "[{} : {}]".format(self.width - 1, 0)
 
-        return  "\t{:<6} {:<8}\t\t\t\t{}".format(self.type, width_str, self.name)
+        return  "\t{:<6} {:<8}\t\t\t\t{}".format(self.dir, width_str, self.name)
     
     # 输出赋值块
     def gen_assign_block(self, value : str = 'd0'):
         return  "assign\t\t{} = {};\n".format(self.name, value)
 
-    # def gen_block(self):
-        
-    #     width_str = ""
-
-    #     if self.width > 1:
-    #         width_str = "[{} : {}]".format(self.width - 1, 0)
-
-    #     return  "\t{:<6} {:<8}\t\t\t\t{}".format(self.type, width_str, self.name)
-
-
 # 触发器
 class dff:
-    def __init__(self, name, width, type, rstval = "b0"):
+    def __init__(self, name, width, type, rstval = "b0", clk : str = "clk", rst = "rst_n"):
 
         self.name = name    
         self.type = type    
         self.width = width
         self.rstval = rstval
+
+        self.clk = clk
+        self.rst = rst
 
         self.__gen_signal()
 
@@ -125,25 +127,25 @@ class dff:
 
         # 这两种类型的flop具有复位的rld
         if self.type in {"lr", "sclr"}:
-            fun_block.append("always@(posedge clk_i or negedge rstn_i) begin\n")
-            fun_block.append("\tif(rstn_i == 1'b0) begin\n")
+            fun_block.append("always@(posedge {} or negedge {}) begin\n".format(self.clk, self.rst))
+            fun_block.append("\tif({} == 1'b0) begin\n".format(self.rst))
             fun_block.append("\t\t{} <= {}'{};\n".format(self.signal["q"].name, self.width, self.rstval))
             fun_block.append("\tend else if({}) begin\n".format(self.signal["rld"].name))
             
         # 只有load，没有复位
         elif self.type in {"l"}:
-            fun_block.append("always@(posedge clk_i) begin\n")
+            fun_block.append("always@(posedge {}) begin\n".format(self.clk))
             fun_block.append("\tif({}) begin\n".format(self.signal["rld"].name))
             
         # 只有复位，没有load
         elif self.type in {"r"}:
-            fun_block.append("always@(posedge clk_i or negedge rstn_i) begin\n")
-            fun_block.append("\tif(rstn_i == 1'b0) begin\n")
+            fun_block.append("always@(posedge {} or negedge {}) begin\n".format(self.clk, self.rst))
+            fun_block.append("\tif({} == 1'b0) begin\n".format(self.rst))
             fun_block.append("\t\t{} <= {}'{};\n".format(self.signal["q"].name, self.width, self.rstval))
             fun_block.append("\tend else begin\n")
         # 没有复位，没有load
         else:
-            fun_block.append("always@(posedge clk_i) begin\n")
+            fun_block.append("always@(posedge {}) begin\n".format(self.clk))
             fun_block.append("\tif(1) begin\n")
         
         fun_block.append("\t\t{} <= {};\n".format(self.signal["q"].name, self.signal["d"].name))
@@ -151,6 +153,10 @@ class dff:
         fun_block.append("end\n")
 
         return fun_block    
+
+# 模块
+class   module:
+    pass
     
 # 总线类
 class   bus:

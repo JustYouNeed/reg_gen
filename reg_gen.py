@@ -17,9 +17,17 @@ import  argparse
 # 解析头部信息
 def parse_header(sheet: worksheet):
     header = {}
+   
+    header["proj"] = sheet.cell(2, 2).value
+    header["module name"] = sheet.cell(3, 2).value
+    header["version"] = sheet.cell(4, 2).value
+    header["author"] = sheet.cell(5, 2).value
+    header["bus"] = sheet.cell(6, 2).value.lower()
+    header["dw"] = sheet.cell(7, 2).value
+    header["reset"] = sheet.cell(8, 2).value
+    header["clock"] = sheet.cell(9, 2).value
 
-    header["dw"] = 32
-    header["name"] = "reg template"
+    print(header)
 
     return  header
 
@@ -46,7 +54,7 @@ def parse_reg(sheet: worksheet, min_row, max_row):
     header = parse_header(sheet)
 
     # 新建一个reg block
-    regblk = reg_block(header["name"], header["dw"], "0x2000000")
+    regblk = reg_block(header["module name"], header["dw"], "0x2000000")
 
     # 获取寄存器有效区间
     reg_valid_cell = sheet.iter_rows(max_row=max_row, min_row=min_row)
@@ -69,6 +77,38 @@ def parse_reg(sheet: worksheet, min_row, max_row):
 
 
 # reg_file = open("reg_file.v", "w")
+
+# 生成顶层集成模块
+def gen_reg_top(name, reg_blk : reg_block, reg_if : bus_if, clk_mode):
+    top_block = []
+
+    top_block.append("module {}_top\n".format(name))
+    top_block.append("(\n")
+
+    # 生成总线端口
+    top_block.extend(reg_if.gen_port_block())
+
+    # 如果是异步模式，则需要添加同步模块
+    if clk_mode == "async":
+        ip_clk = port("ip_clk", 1, "input")
+        ip_rst = port("ip_rst_n", 1, "input")
+        top_block.append("{},\n".format(ip_clk.gen_declare_block()))
+        top_block.append("{},\n".format(ip_rst.gen_declare_block()))
+
+    reg_ports = reg_blk.get_ports()
+
+    # 生成寄存器的端口
+    for i in range(0, len(reg_ports)):
+        if i == len(reg_ports) - 1 :
+            top_block.append("{}\n".format(var.gen_declare_block()))
+        else:
+            top_block.append("{},\n".format(var.gen_declare_block()))
+
+    top_block.append(");\n\n")
+
+    
+
+    return top_block
 
 def generate_reg_file(reg_list):
     
@@ -93,14 +133,25 @@ def generate_reg_file(reg_list):
 
 reg_if = bus_if(type="apb")
 
+# 加载寄存器表格
+def load_sheet(file_path : str):
+    return openpyxl.load_workbook("reg template.xlsx", data_only=True)
 
 
 def main():
-    workbook = openpyxl.load_workbook("reg template.xlsx", data_only=True)
+    workbook = load_sheet("reg template.xlsx")
     worksheet = workbook["template"]
     regblk = parse_reg(worksheet, 14, worksheet.max_row)
 
-    regblk.gen_rtl(name="dcb_reg_rdl")
+    # 生成寄存器模块
+    module_block = regblk.gen_module()
+
+    # for line in module_block:
+    #     reg_file.write("".join(line))
+
+    with open("{}{}.v".format("./", "dcb_reg_rdl"), "w") as f:
+        for line in module_block:
+            f.write("".join(line))
     # print(reg_list)
 
 

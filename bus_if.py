@@ -12,16 +12,16 @@ class   apb_bus(bus):
     # 产生对应端口
     def __gen_port(self):
         self.port = {}
-        self.port["pclk"] = port("pclk", width=1, type="input")
-        self.port["presetn"] = port("presetn", width=1, type="input")
-        self.port["psel"] = port("psel", width=1, type="input")
-        self.port["pwrite"] = port("pwrite", width=1, type="input")
-        self.port["penable"] = port("penable", width=1, type="input")
-        self.port["paddr"] = port("paddr", width=self.aw, type="input")
-        self.port["pwdata"] = port("pwdata", width=self.dw, type="input")
-        self.port["prdata"] = port("prdata", width=self.dw, type="output")
-        self.port["pready"] = port("pready", width=1, type="output")
-        self.port["pslverr"] = port("pslverr", width=1, type="output")
+        self.port["pclk"] = port("pclk", width=1, dir="input")
+        self.port["presetn"] = port("presetn", width=1, dir="input")
+        self.port["psel"] = port("psel", width=1, dir="input")
+        self.port["pwrite"] = port("pwrite", width=1, dir="input")
+        self.port["penable"] = port("penable", width=1, dir="input")
+        self.port["paddr"] = port("paddr", width=self.aw, dir="input")
+        self.port["pwdata"] = port("pwdata", width=self.dw, dir="input")
+        self.port["prdata"] = port("prdata", width=self.dw, dir="output")
+        self.port["pready"] = port("pready", width=1, dir="output")
+        self.port["pslverr"] = port("pslverr", width=1, dir="output")
 
     # 产生总线模块需要的flop
     def __gen_flop(self):
@@ -289,12 +289,12 @@ class   bus_if:
         self.port = {}
 
         # 公共端口
-        self.port["wen"] = port("wen", width=1, type="output")
-        self.port["waddr"] = port("waddr", width=self.aw, type="output")
-        self.port["wdata"] = port("wdata", width=self.dw, type="output")
-        self.port["ren"] = port("ren", width=1, type="output")
-        self.port["raddr"] = port("raddr", width=self.aw, type="output")
-        self.port["rdata"] = port("rdata", width=self.dw, type="input")
+        self.port["wen"] = port("wen", width=1, dir="output")
+        self.port["waddr"] = port("waddr", width=self.aw, dir="output")
+        self.port["wdata"] = port("wdata", width=self.dw, dir="output")
+        self.port["ren"] = port("ren", width=1, dir="output")
+        self.port["raddr"] = port("raddr", width=self.aw, dir="output")
+        self.port["rdata"] = port("rdata", width=self.dw, dir="input")
 
     # def __gen_signal(self):
     #     self.signal = {}

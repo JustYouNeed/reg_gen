@@ -2,7 +2,7 @@
 import  os
 import  logging
 import  math
-from base import *
+from    base import *
 from    bus_if  import  *
 
 # 寄存器字段定义
@@ -74,39 +74,34 @@ class   field:
 
         # 输入输出端口
         if self.access in {"rw", "w1", "w1p", "w0p", "hsrw", "rwhs", "wp"}:
-            self.port["val"] = port("{}".format(self.name), width = self.width, type = "output")
+            self.port["val"] = port("{}".format(self.name), width = self.width, dir = "output", attr="data")
         elif self.access in {"ro", "rc", "rs", "wc", "ws", "wsrc", "wcrs", "w1s", "w1c", "w1t", "w0c", "w0s", "w0t", "rp"}:
-            self.port["val"] = port("{}".format(self.name), width = self.width, type = "input")
+            self.port["val"] = port("{}".format(self.name), width = self.width, dir = "input", attr="data")
 
         # 寄存器清除信号
         if self.access in {"rc", "wc", "w1c", "w0c", "woc", "wsrc", "wcrs"}:
-            self.port["clr"] = port("{}_clr".format(self.name), width = 1, type = "output")
+            self.port["clr"] = port("{}_clr".format(self.name), width = 1, dir = "output", attr="pluse")
 
         # 寄存器翻转端口
         if self.access in {"w1t", "w0t"}:
-            self.port["tog"] = port("{}_tog".format(self.name), width = 1, type = "output")
+            self.port["tog"] = port("{}_tog".format(self.name), width = 1, dir = "output", attr="pluse")
         
         # 字段置位端口
         if self.access in {"rs", "ws", "wsrc", "wcrs", "w1s", "w0s"}:
-            self.port["set"] = port("{}_set".format(self.name), width = 1, type = "output")
+            self.port["set"] = port("{}_set".format(self.name), width = 1, dir = "output", attr="pluse")
 
         # 硬件控制端口
         if self.access in {"rwhs", "hsrw"}:
-            self.port["hw_rld"] = port("{}_hw_rld".format(self.name), width = 1, type = "input")
-            self.port["hw_d"] = port("{}_hw_d".format(self.name), width = self.width, type = "input")
+            self.port["hw_rld"] = port("{}_hw_rld".format(self.name), width = 1, dir = "input", attr="pluse")
+            self.port["hw_d"] = port("{}_hw_d".format(self.name), width = self.width, dir = "input", attr="data")
 
         # 需要产生脉冲，对于w1p或者w0p类型寄存器，其本身输出就是一个脉冲，不需要额外定义一个接口
         if self.access in {"wp", "rp"}:
-            self.port["pluse"] = port("{}_pluse".format(self.name), width = 1, type = "output")
+            self.port["pluse"] = port("{}_pluse".format(self.name), width = 1, dir = "output", attr="pluse")
 
 
     def get_ports(self):
-        port_list = []
-
-        for key in self.port:
-            port_list.append(self.port[key])
-
-        return port_list
+        return  self.port
 
     # 生成字段所需要的flop
     def __gen_flop(self):
@@ -119,7 +114,7 @@ class   field:
         
         # 只有输出端口需要创建flop，对于输出端口，都采用寄存器输出
         for key in self.port:
-            if self.port[key].type in {"output"}:
+            if self.port[key].dir in {"output"}:
                 if key in {"set", "clr", "tog", "pluse"}:
                     self.flop[key] = dff("{}_{}".format(self.name, key), 1, "sclr")
                 elif key in {"val"}:
@@ -335,7 +330,7 @@ class   field:
         
         # 遍历每一个端口，输出端口都需要赋值
         for key in self.port:
-            if self.port[key].type in {"output"}:
+            if self.port[key].dir in {"output"}:
                 right_val = self.flop[key].signal["q"].name
                 out_block.append(self.port[key].gen_assign_block(right_val))
 
@@ -512,12 +507,13 @@ class   register:
         right_val = "(waddr_i == {}) & ren_i".format(self.param)
         fun_block.append("{}{}".format(comment_str, self.signal["ren"].gen_assign_block(right_val)))
 
+        # 处理每一个字段的功能区
         for var in self.field:
             fun_block.extend(var.gen_fun_block())
 
+        # full，只需要关注端口就行
         fun_block.append("\n // {} register full.\n".format(self.name))
 
-        # full，只需要关注端口就行
         for var in self.field:
             if var.width > 1:
                 bits_idx = "{} : {}".format(var.msb, var.lsb)
@@ -546,8 +542,6 @@ class   register:
         out_block = []
 
         out_block.append("\n// {} register output.\n".format(self.name))
-        
-        # out_block.append("\n")
 
         for var in self.field:
             out_block.extend(var.gen_out_block())
@@ -557,11 +551,12 @@ class   register:
 
 class   reg_block:
     def __init__(self, name, width, baseaddr) -> None:
-        self.name = name
+        self.name = "{}_rdl".format(name)
         self.width = width
         self.baseaddr = baseaddr
-
         self.reglist = []
+
+        print(self.name)
         
     def __gen_port(self):
         self.port = {}
@@ -573,16 +568,15 @@ class   reg_block:
                 max_addr = reg.addr
         self.aw = math.ceil(math.log2(max_addr))
         
-        self.port["waddr"] = port("waddr", self.aw, "input")
-        self.port["wdata"] = port("wdata", self.width, "input")
-        self.port["wen"] = port("wen", 1, "input")
-        self.port["raddr"] = port("raddr", self.aw, "input")
-        self.port["rdata"] = port("rdata", self.width, "output")
-        self.port["ren"] = port("ren", 1, "input")
-        self.port["clk"] = port("clk", 1, "input")
-        self.port["rstn"] = port("rstn", 1, "input")
-
-        # print(list(iter(self.port.keys()))[-1])
+        # 定义寄存器访问端口
+        self.port["waddr"] = port("waddr", self.aw, "input", attr="data")
+        self.port["wdata"] = port("wdata", self.width, "input", attr="data")
+        self.port["wen"] = port("wen", 1, "input", attr="pluse")
+        self.port["raddr"] = port("raddr", self.aw, "input", attr="data")
+        self.port["rdata"] = port("rdata", self.width, "output", attr="data")
+        self.port["ren"] = port("ren", 1, "input", attr="pluse")
+        self.port["clk"] = port("clk", 1, "input", attr="clock")
+        self.port["rst_n"] = port("rst_n", 1, "input", attr="reset")
         
     # 添加一个寄存器
     def add_reg(self, name : str = "test", addr : str = ""):
@@ -609,23 +603,26 @@ class   reg_block:
                 print("Error: register {} offset not valid Hex".format(offset))
                 exit(0)
 
-
         # 检查名字有效性
         if name is None:
             print("Error: register must has valid name.")
             exit(0)
 
+        # 生成一个寄存器实例，并添加到寄存器列表中
         reg = register(name, reg_addr, self.width)
         self.reglist.append(reg)
+
         return reg
 
-    # 生成rtl文件
-    def gen_rtl(self, path : str = "./", name : str = "reg_rdl"):
+    # 生成模块
+    def gen_module(self):
         rtl_block = []
 
+        # 生成寄存器访问接口
         self.__gen_port()
 
-        rtl_block.append("module {}\n".format(name))
+        #
+        rtl_block.append("module {}\n".format(self.name))
         rtl_block.append("(\n")
 
         # 输出端口定义
@@ -648,32 +645,29 @@ class   reg_block:
 
         rtl_block.append("\nendmodule\n")
 
-        self.bus = bus_if(type="axi-lite", aw=self.aw)
+        if_port = self.get_if_port()
 
-        for val in self.get_ports():
-            print(val.name, val.type, val.width)
+        for key in if_port:
+            print(if_port[key].name)
 
-        # print(self.bus.get_ports())
-
-        # 创建rtl文件
-        with open("{}{}.v".format(path, name), "w") as f:
-            for line in rtl_block:
-                f.write("".join(line))
-
-            for line in self.bus.gen_rtl():
-                f.write("".join(line))
-
-            # for line in self.bus.gen_var_block():
-            #     f.write("".join(line))
-
-            # for line in self.bus.gen_fun_block():
-            #     f.write("".join(line))
-
-            # for line in self.bus.gen_out_block():
-            #     f.write("".join(line))
-
-        
         return rtl_block
+    
+    # 获取寄存器端口
+    def get_reg_ports(self):
+        port_list = {}
+
+        # 遍历每一个寄存器
+        for var in self.reglist:
+            ports = var.get_ports()
+            for key in ports:
+                port_list[key] = ports[key]
+
+        return port_list
+    
+    # 获取寄存器访问端口
+    def get_if_port(self):
+
+        return  self.port
     
     def get_ports(self):
         port_list = []
@@ -753,7 +747,27 @@ class   reg_block:
             out_block.extend(reg.gen_out_block())
 
         out_block.append("\n// rdata.\n")
-        out_block.append("assign\t\t{} = {};\n".format("rdata_o", "rdata_q"))
+        out_block.append("assign\t\t{} = {};\n".format(self.port["rdata"].name, "rdata_q"))
 
         return out_block
+    
+    def gen_instance(self):
+        inst_block = []
+
+        inst_block.append("{}_rdl u_{}_rdl\n".format(self.name, self.name))
+        inst_block.append("(\n")
+
+        port_list = self.get_ports()
+
+        for i in range(0, len(port_list)):
+            if i == len(port_list) - 1:
+                inst_block.append("\t.{:<48}\t( {}\t\t)\n".format(port_list[i].name, port_list[i].name))
+            else:
+                inst_block.append("\t.{:<48}\t( {}\t\t),\n".format(port_list[i].name, port_list[i].name))
+
+        inst_block.append(");\n")
+
+        return inst_block
+
+        pass
     
