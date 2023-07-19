@@ -134,7 +134,7 @@ reg_if = bus_if(type="apb")
 
 # 加载寄存器表格
 def load_sheet(file_path : str):
-    return openpyxl.load_workbook("reg template.xlsx", data_only=True)
+    return openpyxl.load_workbook("../doc/reg template.xlsx", data_only=True)
 
 
 def main():
