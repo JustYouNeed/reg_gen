@@ -1,6 +1,4 @@
 
-import  os
-import  logging
 import  math
 from    base import *
 from    bus_if  import  *
@@ -9,6 +7,8 @@ from    bus_if  import  *
 class   field:
     # 支持的寄存器属性
     support_access = {"rw", "ro", "w1c", "w0c", "w1s", "w0s", "w1p", "w0p", "w1t", "w0t", "wp", "rp", "wc", "ws", "rc", "rs", "wsrc", "wcrs", "hsrw", "rwhs", "w1"}
+
+
     def __init__(self, attribution, info):
 
         # 该字段归属哪个寄存器
@@ -66,6 +66,9 @@ class   field:
             except ValueError:
                 print("{} reset value error!!!".format(self.name))
                 exit(0)
+        else:
+            print("{} reset value error!!!".format(self.name))
+            exit(0)
 
     # 生成字段对应的端口
     def __gen_port(self):
@@ -74,7 +77,10 @@ class   field:
 
         # 输入输出端口
         if self.access in {"rw", "w1", "w1p", "w0p", "hsrw", "rwhs", "wp"}:
-            self.port["val"] = port("{}".format(self.name), width = self.width, dir = "output", attr="data")
+            if self.access in {"w1p", "w0p"}:
+                self.port["val"] = port("{}".format(self.name), width = self.width, dir = "output", attr="pluse")
+            else:
+                self.port["val"] = port("{}".format(self.name), width = self.width, dir = "output", attr="data")
         elif self.access in {"ro", "rc", "rs", "wc", "ws", "wsrc", "wcrs", "w1s", "w1c", "w1t", "w0c", "w0s", "w0t", "rp"}:
             self.port["val"] = port("{}".format(self.name), width = self.width, dir = "input", attr="data")
 
@@ -99,7 +105,7 @@ class   field:
         if self.access in {"wp", "rp"}:
             self.port["pluse"] = port("{}_pluse".format(self.name), width = 1, dir = "output", attr="pluse")
 
-
+    #
     def get_ports(self):
         return  self.port
 
@@ -125,7 +131,7 @@ class   field:
                     else:
                         self.flop[key] = dff("{}".format(self.name), self.width, "lr", rstval=self.rstval)
 
-        # 对于只能操作一次的突破口类型，需要有一个锁定标志
+        # 对于只能操作一次的寄存器类型，需要有一个锁定标志
         if self.access in {"w1"}:
             self.flop["lock"] = dff("{}_lock".format(self.name), 1, "lr")
 
@@ -139,7 +145,7 @@ class   field:
         
         # 每一个flop都需要定义变量
         for key in self.flop:
-            var_block.append(self.flop[key].gen_var_block())
+            var_block.extend(self.flop[key].gen_var_block())
         
         return var_block
 
@@ -475,10 +481,14 @@ class   register:
         
         return port_block
     
+    # 获取寄存器的端口，需要确保寄存器名字以及字段名称不会重复
     def get_ports(self):
-        port_list = []
+        port_list = {}
         for var in self.field:
-            port_list.extend(var.get_ports())
+            port_list.update(var.get_ports())
+
+        # for key in port_list:
+        #     print(port_list[key].name)
 
         return port_list
 
@@ -627,6 +637,7 @@ class   reg_block:
 
         # 输出端口定义
         rtl_block.extend(self.__gen_port_block())
+        rtl_block.append(");\n")
 
         # 参数区
         rtl_block.extend(self.__gen_param_block())
@@ -645,10 +656,12 @@ class   reg_block:
 
         rtl_block.append("\nendmodule\n")
 
-        if_port = self.get_if_port()
+        # if_port = self.get_if_port()
 
-        for key in if_port:
-            print(if_port[key].name)
+        # for key in if_port:
+        #     print(if_port[key].name)
+
+        self.get_reg_ports()
 
         return rtl_block
     
@@ -658,24 +671,20 @@ class   reg_block:
 
         # 遍历每一个寄存器
         for var in self.reglist:
-            ports = var.get_ports()
-            for key in ports:
-                port_list[key] = ports[key]
+            port_list.update(var.get_ports())
 
         return port_list
     
     # 获取寄存器访问端口
-    def get_if_port(self):
-
+    def get_if_ports(self):
         return  self.port
     
+    # 获取所有端口
     def get_ports(self):
-        port_list = []
-        for var in self.reglist:
-            port_list.extend(var.get_ports())
+        port_list = {}
 
-        for key in self.port:
-            port_list.append(self.port[key])
+        port_list.update(self.get_reg_ports())
+        port_list.update(self.get_if_ports())
 
         return port_list
 
@@ -683,11 +692,15 @@ class   reg_block:
     def __gen_read_block(self):
         read_block = []
 
-        read_block.append("\n// read \n")
+        read_block.append("\n")
+        read_block.append("//////////////////////////////////////////////////////////////////////////////\n")
+        read_block.append("//\t\t\t\t\t\t{} function block\t\t\t\t\n".format("read"))
+        read_block.append("//////////////////////////////////////////////////////////////////////////////\n")
+
         read_block.append("{:<6} [{} : {}]\t\t\t{};\n".format("reg", self.width - 1, 0, "rdata_q"))
         read_block.append("always@(*) begin\n")
         read_block.append("\trdata_q = {}'d0\n".format(self.width))
-        read_block.append("\tcase(raddr_i)\n")
+        read_block.append("\tcase({})\n".format(self.port["raddr"].name))
 
         for reg in self.reglist:
             read_block.append("\t\t{:38}: rdata_q = {};\n".format(reg.param, reg.signal["full"].name))

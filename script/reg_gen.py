@@ -1,4 +1,3 @@
-
 #!/python
 
 import  os
@@ -149,14 +148,14 @@ def main():
     # for line in module_block:
     #     reg_file.write("".join(line))
 
-    with open("{}{}.v".format("./", "dcb_reg_rdl"), "w") as f:
+    with open("{}{}.v".format("./", regblk.name), "w") as f:
         for line in module_block:
             f.write("".join(line))
     # print(reg_list)
 
 
 if  __name__ == "__main__":
-    # try:
-    main()
-    # except Exception as e:
-    #     print(e)
+    try:
+        main()
+    except Exception as e:
+        print(e)
